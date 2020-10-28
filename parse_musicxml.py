@@ -17,10 +17,9 @@ class Parser:
         note = None
         chord = None
 
-        for part in self.root.findall('part'):
-            for measure in part.findall('measure'):
-                for note_info in measure.findall('note'):
-
+        for i, part in enumerate(self.root.findall('part')):
+            for j, measure in enumerate(part.findall('measure')):
+                for k, note_info in enumerate(measure.findall('note')):
                     duration = note_info.find('duration').text
 
                     if int(duration) == 1 and not self.smallest_note_value and note_info.find('type') is not None:
@@ -43,8 +42,10 @@ class Parser:
                             in_chord = False
                             self.insert(self.chords_dict, tuple(chord), prev_duration)
                             self.insert(self.categories_dict, tuple(chord), prev_duration)
-                        else:
+                        elif i == len(self.root.findall('part')) - 1 and j == len(part.findall('measure')) - 1 and k == len(measure.findall('note')) - 1:
                             self.insert(self.categories_dict, note, duration)
+                        else:
+                            self.insert(self.categories_dict, prev_note, duration)
                     else: # means that: note_info.find('rest') != None
                         note = 'R'
 
