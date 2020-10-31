@@ -6,28 +6,31 @@ class Parser:
         self.root = ET.parse(filename).getroot()
         self.output_distribution_dict = collections.OrderedDict()
         self.normalized_output_distribution_dict = collections.OrderedDict()
+        self.normalized_output_distribution_matrix = None
 
         self.initial_transition_dict = collections.OrderedDict()
         self.normalized_initial_transition_dict = collections.OrderedDict()
-        self.initial_transition_matrix = None
         self.normalized_initial_transition_matrix = None
 
         self.transition_probability_dict = collections.OrderedDict()
         self.normalized_transition_probability_dict = collections.OrderedDict()
         self.normalized_transition_probability_matrix = None
 
+        self.observables = []
+        self.hidden_states = []
+
         self.smallest_note_value = None
 
-        self.parse_categories()
+        self.parse()
 
-    def parse_categories(self):
+    def parse(self):
         prev_note = None # the prev note (it may be part of a chord). but this variable itself NEVER stores a chord
         sound_object_to_insert = None # either note or chord
         prev_sound_object = None # either note or chord
         in_chord = False
         note = None
         chord = None
-
+        prev_duration = None
 
         for i, part in enumerate(self.root.findall('part')):
             for j, measure in enumerate(part.findall('measure')):
@@ -49,11 +52,10 @@ class Parser:
                         note = 'R'
 
                     if note is not None:
-                        is_first_iteration = i == 0 and j == 0 and k == 0
-                        is_second_iteration = i == 0 and j == 0 and k == 1
                         is_last_iteration = i == len(self.root.findall('part')) - 1 and j == len(part.findall('measure')) - 1 and k == len(measure.findall('note')) - 1
 
                         if note_info.find('chord') is not None:
+                            # currently, the duration is just  going  to be that of the last note in the chord (can go back to change this later...)
                             if in_chord:
                                 chord.append(note)
                             else:
@@ -63,64 +65,30 @@ class Parser:
                             prev_sound_object = sound_object_to_insert
                             if in_chord and note_info.find('chord') is None:
                                 in_chord = False
-                                sound_object_to_insert = tuple(chord)
+                                sound_object_to_insert = tuple(sorted(chord))
                             elif is_last_iteration:
                                 sound_object_to_insert = note
                             else:
                                 sound_object_to_insert = prev_note
 
                             if sound_object_to_insert is not None: # it will be None on the first iteration, since we insert based on looking back
-                                if prev_sound_object is not None:
-                                    self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
-                                self.insert(self.output_distribution_dict, sound_object_to_insert, duration)
-
-                                if sound_object_to_insert in self.initial_transition_dict:
-                                    self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
-                                else:
-                                    self.initial_transition_dict[sound_object_to_insert] = 1
+                                self.handle_insertion(prev_sound_object, sound_object_to_insert, prev_duration)
 
                     prev_note = note
+                    prev_duration = duration
 
         if in_chord: # means the last sound object was a chord -- handle this case
-            self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
-            self.insert(self.output_distribution_dict, sound_object_to_insert, duration)
-            if sound_object_to_insert in self.initial_transition_dict:
-                self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
-            else:
-                self.initial_transition_dict[sound_object_to_insert] = 1
+            self.handle_insertion(prev_sound_object, sound_object_to_insert, prev_duration)
 
         self.insert(self.transition_probability_dict, sound_object_to_insert, 'R') # set the last note/chord to transition to a rest, rather than nothing (this ensure that everything has a transition defined for it)
 
+        self.normalize_dicts()
+        self.build_matrices()
+
+    def normalize_dicts(self):
         self.normalize_initial_transition_dict()
         self.normalize_nested_dict(self.transition_probability_dict, self.normalized_transition_probability_dict)
         self.normalize_nested_dict(self.output_distribution_dict, self.normalized_output_distribution_dict)
-        self.build_normalized_transition_probability_matrix()
-
-        self.initial_transition_matrix = list(self.initial_transition_dict.values())
-        total_sum_initial_transition_matrix = sum(self.initial_transition_matrix)
-        self.normalized_initial_transition_matrix = list(map(lambda elem: elem / total_sum_initial_transition_matrix, self.initial_transition_matrix))
-
-    def insert(self, dict, value1, value2):
-        if value1 in dict:
-            if value2 in dict[value1]:
-                dict[value1][value2] = dict[value1][value2] + 1
-            else:
-                dict[value1][value2] = 1
-        else:
-            dict[value1] = {}
-            dict[value1][value2] = 1
-
-    def build_normalized_transition_probability_matrix(self):
-        # initialize matrix to known size
-        list_dimension = len(self.initial_transition_dict)
-        self.normalized_transition_probability_matrix = [[None for j in range(list_dimension)] for i in range(list_dimension)]
-
-        for i, (sound_object, v1) in enumerate(self.initial_transition_dict.items()):
-            for j, (transition_sound_object, v2) in enumerate(self.initial_transition_dict.items()):
-                if transition_sound_object in self.normalized_transition_probability_dict[sound_object]:
-                    self.normalized_transition_probability_matrix[i][j] = self.normalized_transition_probability_dict[sound_object][transition_sound_object]
-                else:
-                    self.normalized_transition_probability_matrix[i][j] = 0
 
     def normalize_nested_dict(self, input_dict, output_dict):
         for type1 in input_dict:
@@ -138,6 +106,58 @@ class Parser:
         for sound_object in self.initial_transition_dict:
             self.normalized_initial_transition_dict[sound_object] = self.initial_transition_dict[sound_object] / total_count
 
+    def build_matrices(self):
+        self.build_normalized_transition_probability_matrix()
+        self.normalized_initial_transition_matrix = list(self.normalized_initial_transition_dict.values())
+        self.build_normalized_output_distribution_matrix()
+
+    def build_normalized_transition_probability_matrix(self):
+        # initialize matrix to known size
+        list_dimension = len(self.hidden_states)
+        self.normalized_transition_probability_matrix = [[None for j in range(list_dimension)] for i in range(list_dimension)]
+
+        for i, sound_object in enumerate(self.hidden_states):
+            for j, transition_sound_object in enumerate(self.hidden_states):
+                if transition_sound_object in self.normalized_transition_probability_dict[sound_object]:
+                    self.normalized_transition_probability_matrix[i][j] = self.normalized_transition_probability_dict[sound_object][transition_sound_object]
+                else:
+                    self.normalized_transition_probability_matrix[i][j] = 0
+
+    def build_normalized_output_distribution_matrix(self):
+        # initialize matrix to known size
+        self.normalized_output_distribution_matrix = [[None for j in range(len(self.observables))] for i in range(len(self.hidden_states))]
+
+        for i, sound_object in enumerate(self.hidden_states):
+            for j, transition_sound_object in enumerate(self.observables):
+                if transition_sound_object in self.normalized_output_distribution_dict[sound_object]:
+                    self.normalized_output_distribution_matrix[i][j] = self.normalized_output_distribution_dict[sound_object][transition_sound_object]
+                else:
+                    self.normalized_output_distribution_matrix[i][j] = 0
+
+    def handle_insertion(self, prev_sound_object, sound_object_to_insert, duration_of_sound_object_to_insert):
+        if prev_sound_object is not None:
+            self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
+        self.insert(self.output_distribution_dict, sound_object_to_insert, duration_of_sound_object_to_insert)
+        if duration_of_sound_object_to_insert not in self.observables:
+            self.observables.append(duration_of_sound_object_to_insert)
+        if sound_object_to_insert not in self.hidden_states:
+            self.hidden_states.append(sound_object_to_insert)
+
+        if sound_object_to_insert in self.initial_transition_dict:
+            self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
+        else:
+            self.initial_transition_dict[sound_object_to_insert] = 1
+
+    def insert(self, dict, value1, value2):
+        if value1 in dict:
+            if value2 in dict[value1]:
+                dict[value1][value2] = dict[value1][value2] + 1
+            else:
+                dict[value1][value2] = 1
+        else:
+            dict[value1] = {}
+            dict[value1][value2] = 1
+
     def print_dict(self, dict):
         for key in dict:
             print(key, ":", dict[key])
@@ -154,6 +174,11 @@ class Parser:
             "128th": 1/32
         }
         return switcher.get(note_type, None)
+
+    def check_row_stochastic_2d(self, matrix):
+        for index, row in enumerate(matrix):
+            if sum(row) != 1:
+                print("ERROR! The sum in row", index, "is", sum(row))
 
 if __name__ == "__main__":
     parser = Parser('Cantabile-Piano.musicxml')
