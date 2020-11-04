@@ -37,7 +37,7 @@ class Parser:
 
                     duration_value = note_info.find('duration').text # unsure if this is chunk is ever needed later.....
                     if int(duration_value) == 1 and not self.smallest_note_value and note_info.find('type') is not None:
-                        self.smallest_note_value = self.switch_note_value(note_info.find('type').text)
+                        self.smallest_note_value = self.rhythm_to_float(note_info.find('type').text)
 
                     note = None
                     if note_info.find('pitch') is not None:
@@ -157,7 +157,7 @@ class Parser:
         for key in dict:
             print(key, ":", dict[key])
 
-    def switch_note_value(self, note_type):
+    def rhythm_to_float(self, duration):
         switcher = {
             "whole": 4,
             "half": 2,
@@ -168,7 +168,7 @@ class Parser:
             "64th": 1/16,
             "128th": 1/32
         }
-        return switcher.get(note_type, None)
+        return switcher.get(duration, None)
 
     def check_row_stochastic_2d(self, matrix):
         for index, row in enumerate(matrix):
