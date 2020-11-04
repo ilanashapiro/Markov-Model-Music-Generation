@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import collections
+import numpy as np
 
 class Parser:
     def __init__(self, filename):
@@ -108,31 +109,27 @@ class Parser:
 
     def build_matrices(self):
         self.build_normalized_transition_probability_matrix()
-        self.normalized_initial_transition_matrix = list(self.normalized_initial_transition_dict.values())
+        self.normalized_initial_transition_matrix = np.array(list(init_prob for init_prob in self.normalized_initial_transition_dict.values()))
         self.build_normalized_output_distribution_matrix()
 
     def build_normalized_transition_probability_matrix(self):
         # initialize matrix to known size
         list_dimension = len(self.hidden_states)
-        self.normalized_transition_probability_matrix = [[None for j in range(list_dimension)] for i in range(list_dimension)]
+        self.normalized_transition_probability_matrix = np.zeros((list_dimension,list_dimension), dtype=float)
 
         for i, sound_object in enumerate(self.hidden_states):
             for j, transition_sound_object in enumerate(self.hidden_states):
                 if transition_sound_object in self.normalized_transition_probability_dict[sound_object]:
                     self.normalized_transition_probability_matrix[i][j] = self.normalized_transition_probability_dict[sound_object][transition_sound_object]
-                else:
-                    self.normalized_transition_probability_matrix[i][j] = 0
 
     def build_normalized_output_distribution_matrix(self):
         # initialize matrix to known size
-        self.normalized_output_distribution_matrix = [[None for j in range(len(self.observables))] for i in range(len(self.hidden_states))]
+        self.normalized_output_distribution_matrix = np.zeros((len(self.hidden_states),len(self.observables)), dtype=float)
 
         for i, sound_object in enumerate(self.hidden_states):
             for j, transition_sound_object in enumerate(self.observables):
                 if transition_sound_object in self.normalized_output_distribution_dict[sound_object]:
                     self.normalized_output_distribution_matrix[i][j] = self.normalized_output_distribution_dict[sound_object][transition_sound_object]
-                else:
-                    self.normalized_output_distribution_matrix[i][j] = 0
 
     def handle_insertion(self, prev_sound_object, sound_object_to_insert, duration_of_sound_object_to_insert):
         if prev_sound_object is not None:
@@ -179,6 +176,3 @@ class Parser:
         for index, row in enumerate(matrix):
             if sum(row) != 1:
                 print("ERROR! The sum in row", index, "is", sum(row))
-
-if __name__ == "__main__":
-    parser = Parser('Cantabile-Piano.musicxml')
