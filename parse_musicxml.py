@@ -14,8 +14,7 @@ class Parser:
         self.transition_probability_dict = collections.OrderedDict()
         self.normalized_transition_probability_matrix = None
 
-        self.observables = []
-        self.hidden_states = []
+        self.sound_objects = []
 
         self.smallest_note_value = None
 
@@ -29,6 +28,7 @@ class Parser:
         note = None
         chord = None
         prev_duration = None
+        first_sound_object = None
 
         for i, part in enumerate(self.root.findall('part')):
             for j, measure in enumerate(part.findall('measure')):
@@ -63,39 +63,36 @@ class Parser:
                             prev_sound_object = sound_object_to_insert
                             if in_chord and note_info.find('chord') is None:
                                 in_chord = False
-                                sound_object_to_insert = tuple(sorted(chord))
-                            elif is_last_iteration:
-                                sound_object_to_insert = note
+                                sound_object_to_insert = (tuple(sorted(chord)), prev_duration)
                             else:
-                                sound_object_to_insert = prev_note
+                                sound_object_to_insert = (prev_note, prev_duration)
 
-                            if sound_object_to_insert is not None: # it will be None on the first iteration, since we insert based on looking back
-                                self.handle_insertion(prev_sound_object, sound_object_to_insert, prev_duration)
+                            self.handle_insertion(prev_sound_object, sound_object_to_insert)
+                            if first_sound_object is None and prev_sound_object is not None and prev_sound_object[0] is not None:
+                                first_sound_object = prev_sound_object
+                            if is_last_iteration: #note we're NOT in a chord (i.e. last sound object is NOT a chord)
+                                self.handle_insertion(sound_object_to_insert, (note, duration))
 
                     prev_note = note
                     prev_duration = duration
 
         if in_chord: # means the last sound object was a chord -- handle this case
-            self.handle_insertion(prev_sound_object, sound_object_to_insert, prev_duration)
-
-        self.insert(self.transition_probability_dict, sound_object_to_insert, 'R') # set the last note/chord to transition to a rest, rather than nothing (this ensure that everything has a transition defined for it)
+            final_chord = (tuple(sorted(chord)), prev_duration)
+            print(sound_object_to_insert, (final_chord, prev_duration))
+            self.handle_insertion(sound_object_to_insert, (final_chord, prev_duration))
+        else:
+            # final sound object was NOT a chord, it was a note
+            # set the last note/chord to transition to a quarter rest, rather than nothing
+            # then add a transition from the rest back to the first sound object
+            # this ensure that everything has a transition defined for it
+            self.handle_insertion((note, duration), ('R', "quarter"))
+            self.handle_insertion(('R', "quarter"), first_sound_object)
 
         self.build_matrices()
-
-    # OLD: SHOULD DELETE AS SOON AS I'M SURE I'LL NEVER USE IT ANY MORE
-    def normalize_nested_dict(self, input_dict, output_dict):
-        for type1 in input_dict:
-            output_dict[type1] = {}
-            total_count = 0
-            for type2 in input_dict[type1]:
-                total_count += input_dict[type1][type2]
-            for type2 in input_dict[type1]:
-                output_dict[type1][type2] = input_dict[type1][type2] / total_count
 
     def build_matrices(self):
         self.build_normalized_transition_probability_matrix()
         self.build_normalized_initial_transition_matrix()
-        self.build_normalized_output_distribution_matrix()
 
     def build_normalized_initial_transition_matrix(self):
         self.normalized_initial_transition_matrix = np.array(list(init_prob for init_prob in self.initial_transition_dict.values()))
@@ -106,42 +103,28 @@ class Parser:
 
     def build_normalized_transition_probability_matrix(self):
         # initialize matrix to known size
-        list_dimension = len(self.hidden_states)
+        list_dimension = len(self.sound_objects)
         self.normalized_transition_probability_matrix = np.zeros((list_dimension,list_dimension), dtype=float)
-
-        for i, sound_object in enumerate(self.hidden_states):
-            for j, transition_sound_object in enumerate(self.hidden_states):
+        # self.print_dict(self.transition_probability_dict)
+        for i, sound_object in enumerate(self.sound_objects):
+            for j, transition_sound_object in enumerate(self.sound_objects):
                 if transition_sound_object in self.transition_probability_dict[sound_object]:
                     self.normalized_transition_probability_matrix[i][j] = self.transition_probability_dict[sound_object][transition_sound_object]
-
         self.normalized_transition_probability_matrix = self.normalized_transition_probability_matrix/self.normalized_transition_probability_matrix.sum(axis=1,keepdims=True)
         self.normalized_transition_probability_matrix = np.cumsum(self.normalized_transition_probability_matrix,axis=1)
 
-    def build_normalized_output_distribution_matrix(self):
-        # initialize matrix to known size
-        self.normalized_output_distribution_matrix = np.zeros((len(self.hidden_states),len(self.observables)), dtype=float)
+    def handle_insertion(self, prev_sound_object, sound_object_to_insert):
+        if sound_object_to_insert is not None and sound_object_to_insert[0] is not None:
+            if prev_sound_object is not None and prev_sound_object[0] is not None:
+                self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
 
-        for i, sound_object in enumerate(self.hidden_states):
-            for j, transition_sound_object in enumerate(self.observables):
-                if transition_sound_object in self.output_distribution_dict[sound_object]:
-                    self.normalized_output_distribution_matrix[i][j] = self.output_distribution_dict[sound_object][transition_sound_object]
+            if sound_object_to_insert not in self.sound_objects:
+                self.sound_objects.append(sound_object_to_insert)
 
-        self.normalized_output_distribution_matrix = self.normalized_output_distribution_matrix/self.normalized_output_distribution_matrix.sum(axis=1,keepdims=True)
-        self.normalized_output_distribution_matrix = np.cumsum(self.normalized_output_distribution_matrix,axis=1)
-
-    def handle_insertion(self, prev_sound_object, sound_object_to_insert, duration_of_sound_object_to_insert):
-        if prev_sound_object is not None:
-            self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
-        self.insert(self.output_distribution_dict, sound_object_to_insert, duration_of_sound_object_to_insert)
-        if duration_of_sound_object_to_insert not in self.observables:
-            self.observables.append(duration_of_sound_object_to_insert)
-        if sound_object_to_insert not in self.hidden_states:
-            self.hidden_states.append(sound_object_to_insert)
-
-        if sound_object_to_insert in self.initial_transition_dict:
-            self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
-        else:
-            self.initial_transition_dict[sound_object_to_insert] = 1
+            if sound_object_to_insert in self.initial_transition_dict:
+                self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
+            else:
+                self.initial_transition_dict[sound_object_to_insert] = 1
 
     def insert(self, dict, value1, value2):
         if value1 in dict:

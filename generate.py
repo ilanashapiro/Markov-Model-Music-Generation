@@ -18,12 +18,15 @@ def find_nearest_above(my_array, target):
 def generate(seq_len):
     sequence = [None] * seq_len
 
-    note_prob = random.uniform(0, 1)
-    rhythm_prob = random.uniform(0, 1)
-    note_index = find_nearest_above(parser.normalized_initial_transition_matrix, note_prob)
-    rhythm_index = find_nearest_above(parser.normalized_output_distribution_matrix[note_index], rhythm_prob)
+    # comment in for random start note
+    # note_prob = random.uniform(0, 1)
+    # rhythm_prob = random.uniform(0, 1)
+    # note_index = find_nearest_above(parser.normalized_initial_transition_matrix, note_prob)
+    # check_null_index(note_index, "ERROR getting note index in initial transition matrix")
 
-    sequence[0] = (parser.hidden_states[note_index], parser.observables[rhythm_index])
+    # comment in for seed
+    sequence[0] = parser.sound_objects[0]
+    note_index = 0
     curr_index = 1
 
     while (curr_index < seq_len):
@@ -31,18 +34,17 @@ def generate(seq_len):
         rhythm_prob = random.uniform(0, 1)
 
         note_index = find_nearest_above(parser.normalized_transition_probability_matrix[note_index], note_prob)
-        if(note_index == None):
-            print("ERROR getting note index in probability transition matrix")
-            sys.exit(1)
+        check_null_index(note_index, "ERROR getting note index in probability transition matrix")
 
-        rhythm_index = find_nearest_above(parser.normalized_output_distribution_matrix[note_index], rhythm_prob)
-        if(note_index == None):
-            print("ERROR getting note index in output dist rhythm matrix")
-            sys.exit(1)
-
-        sequence[curr_index] = (parser.hidden_states[note_index], parser.observables[rhythm_index])
+        sequence[curr_index] = parser.sound_objects[note_index]
         curr_index += 1
+
     print(sequence)
+
+def check_null_index(index, error_message):
+    if(index == None):
+        print(error_message)
+        sys.exit(1)
 
 if __name__ == "__main__":
     parser = parse_musicxml.Parser('Cantabile-Flute.musicxml')
