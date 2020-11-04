@@ -6,15 +6,12 @@ class Parser:
     def __init__(self, filename):
         self.root = ET.parse(filename).getroot()
         self.output_distribution_dict = collections.OrderedDict()
-        self.normalized_output_distribution_dict = collections.OrderedDict()
         self.normalized_output_distribution_matrix = None
 
         self.initial_transition_dict = collections.OrderedDict()
-        self.normalized_initial_transition_dict = collections.OrderedDict()
         self.normalized_initial_transition_matrix = None
 
         self.transition_probability_dict = collections.OrderedDict()
-        self.normalized_transition_probability_dict = collections.OrderedDict()
         self.normalized_transition_probability_matrix = None
 
         self.observables = []
@@ -83,14 +80,9 @@ class Parser:
 
         self.insert(self.transition_probability_dict, sound_object_to_insert, 'R') # set the last note/chord to transition to a rest, rather than nothing (this ensure that everything has a transition defined for it)
 
-        self.normalize_dicts()
         self.build_matrices()
 
-    def normalize_dicts(self):
-        self.normalize_initial_transition_dict()
-        self.normalize_nested_dict(self.transition_probability_dict, self.normalized_transition_probability_dict)
-        self.normalize_nested_dict(self.output_distribution_dict, self.normalized_output_distribution_dict)
-
+    # OLD: SHOULD DELETE AS SOON AS I'M SURE I'LL NEVER USE IT ANY MORE
     def normalize_nested_dict(self, input_dict, output_dict):
         for type1 in input_dict:
             output_dict[type1] = {}
@@ -100,17 +92,17 @@ class Parser:
             for type2 in input_dict[type1]:
                 output_dict[type1][type2] = input_dict[type1][type2] / total_count
 
-    def normalize_initial_transition_dict(self):
-        total_count = 0
-        for sound_object in self.initial_transition_dict:
-            total_count += 1
-        for sound_object in self.initial_transition_dict:
-            self.normalized_initial_transition_dict[sound_object] = self.initial_transition_dict[sound_object] / total_count
-
     def build_matrices(self):
         self.build_normalized_transition_probability_matrix()
-        self.normalized_initial_transition_matrix = np.array(list(init_prob for init_prob in self.normalized_initial_transition_dict.values()))
+        self.build_normalized_initial_transition_matrix()
         self.build_normalized_output_distribution_matrix()
+
+    def build_normalized_initial_transition_matrix(self):
+        self.normalized_initial_transition_matrix = np.array(list(init_prob for init_prob in self.initial_transition_dict.values()))
+        # convert to probabilities
+        self.normalized_initial_transition_matrix = self.normalized_initial_transition_matrix/self.normalized_initial_transition_matrix.sum(keepdims=True)
+        # multinomial dist
+        self.normalized_initial_transition_matrix = np.cumsum(self.normalized_initial_transition_matrix)
 
     def build_normalized_transition_probability_matrix(self):
         # initialize matrix to known size
@@ -119,8 +111,11 @@ class Parser:
 
         for i, sound_object in enumerate(self.hidden_states):
             for j, transition_sound_object in enumerate(self.hidden_states):
-                if transition_sound_object in self.normalized_transition_probability_dict[sound_object]:
-                    self.normalized_transition_probability_matrix[i][j] = self.normalized_transition_probability_dict[sound_object][transition_sound_object]
+                if transition_sound_object in self.transition_probability_dict[sound_object]:
+                    self.normalized_transition_probability_matrix[i][j] = self.transition_probability_dict[sound_object][transition_sound_object]
+
+        self.normalized_transition_probability_matrix = self.normalized_transition_probability_matrix/self.normalized_transition_probability_matrix.sum(axis=1,keepdims=True)
+        self.normalized_transition_probability_matrix = np.cumsum(self.normalized_transition_probability_matrix,axis=1)
 
     def build_normalized_output_distribution_matrix(self):
         # initialize matrix to known size
@@ -128,8 +123,11 @@ class Parser:
 
         for i, sound_object in enumerate(self.hidden_states):
             for j, transition_sound_object in enumerate(self.observables):
-                if transition_sound_object in self.normalized_output_distribution_dict[sound_object]:
-                    self.normalized_output_distribution_matrix[i][j] = self.normalized_output_distribution_dict[sound_object][transition_sound_object]
+                if transition_sound_object in self.output_distribution_dict[sound_object]:
+                    self.normalized_output_distribution_matrix[i][j] = self.output_distribution_dict[sound_object][transition_sound_object]
+
+        self.normalized_output_distribution_matrix = self.normalized_output_distribution_matrix/self.normalized_output_distribution_matrix.sum(axis=1,keepdims=True)
+        self.normalized_output_distribution_matrix = np.cumsum(self.normalized_output_distribution_matrix,axis=1)
 
     def handle_insertion(self, prev_sound_object, sound_object_to_insert, duration_of_sound_object_to_insert):
         if prev_sound_object is not None:
