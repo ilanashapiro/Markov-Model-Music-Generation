@@ -90,7 +90,8 @@ def get_pitch(note):
     return None # this is a rest
 
 if __name__ == "__main__":
-    parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
+    # parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
+    parsers  = [parse_musicxml.Parser('Cantabile-Piano.musicxml')]
     for parser in parsers:
         sequence = generate(100, parser)
         track    = 0

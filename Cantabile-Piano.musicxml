@@ -5415,6 +5415,7 @@
         <duration>2</duration>
         <voice>5</voice>
         <type>eighth</type>
+        <accidental>sharp</accidental>
         <stem>up</stem>
         <staff>2</staff>
         </note>
@@ -5947,6 +5948,7 @@
         <duration>1</duration>
         <voice>5</voice>
         <type>16th</type>
+        <accidental>sharp</accidental>
         <stem>up</stem>
         <staff>2</staff>
         <beam number="1">begin</beam>
@@ -5965,6 +5967,7 @@
         <duration>1</duration>
         <voice>5</voice>
         <type>16th</type>
+        <accidental>sharp</accidental>
         <stem>up</stem>
         <staff>2</staff>
         </note>
