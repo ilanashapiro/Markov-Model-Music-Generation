@@ -4,6 +4,7 @@ import numpy as np
 
 class Parser:
     def __init__(self, filename):
+        self.filename = filename
         self.root = ET.parse(filename).getroot()
         self.output_distribution_dict = collections.OrderedDict()
         self.normalized_output_distribution_matrix = None
@@ -17,6 +18,7 @@ class Parser:
         self.sound_objects = []
 
         self.smallest_note_value = None
+        self.tempo = None
 
         self.parse()
 
@@ -30,8 +32,17 @@ class Parser:
         prev_duration = None
         first_sound_object = None
 
+        self.tempo = self.root.find('part').find('measure').find('direction')
+        if self.tempo is not None:
+            self.tempo = int(self.tempo.find('sound').attrib['tempo'])
+        self.instrument = self.root.find('part-list').find('score-part').find('part-name').text
+        if self.instrument == 'Piano':
+            self.instrument = 'Acoustic Grand Piano'
+        self.name = self.root.find('credit').find('credit-words').text
+
         for i, part in enumerate(self.root.findall('part')):
             for j, measure in enumerate(part.findall('measure')):
+
                 for k, note_info in enumerate(measure.findall('note')):
                     duration = note_info.find('type').text
 
@@ -152,8 +163,3 @@ class Parser:
             "128th": 1/32
         }
         return switcher.get(duration, None)
-
-    def check_row_stochastic_2d(self, matrix):
-        for index, row in enumerate(matrix):
-            if sum(row) != 1:
-                print("ERROR! The sum in row", index, "is", sum(row))

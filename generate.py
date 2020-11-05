@@ -1,7 +1,10 @@
 import parse_musicxml
 import random
 import numpy as np
+import midi_numbers
+from midiutil import MIDIFile
 import sys
+import re
 
 # I did not write this function. Credit: Akavall on StackOverflow
 # https://stackoverflow.com/questions/17118350/how-to-find-nearest-value-that-is-greater-in-numpy-array
@@ -15,7 +18,7 @@ def find_nearest_above(my_array, target):
     masked_diff = np.ma.masked_array(diff, mask)
     return masked_diff.argmin()
 
-def generate(seq_len):
+def generate(seq_len, parser):
     sequence = [None] * seq_len
 
     # comment in for random start note
@@ -39,13 +42,80 @@ def generate(seq_len):
         sequence[curr_index] = parser.sound_objects[note_index]
         curr_index += 1
 
-    print(sequence)
+    return sequence
 
 def check_null_index(index, error_message):
     if(index == None):
         print(error_message)
         sys.exit(1)
 
+def convert_flat_accidentals(note):
+    switcher = {
+        "Cb": "B",
+        "Db": "C#",
+        "Eb": "D#",
+        "Fb": "E",
+        "Gb": "F#",
+        "Ab": "G#",
+        "Bb": "A#"
+    }
+    return switcher.get(note, note)
+
+def get_note_offset_midi_val(note):
+    switcher = {
+        "C": 0,
+        "C#": 1,
+        "D": 2,
+        "D#": 3,
+        "E": 4,
+        "F": 5,
+        "F#": 6,
+        "G": 7,
+        "G#": 8,
+        "A": 9,
+        "A#": 10,
+        "B": 11
+    }
+    return switcher.get(note, 0)
+
+def get_pitch(note):
+    octave_info = re.findall('\d+', note)
+    if len(octave_info) > 0:
+        octave = int(octave_info[0])
+        note = ''.join([i for i in note if not i.isdigit()])
+        note = convert_flat_accidentals(note)
+        base_octave_val = 12*octave + 24
+        note_val = base_octave_val + get_note_offset_midi_val(note)
+        return note_val
+    return None # this is a rest
+
 if __name__ == "__main__":
-    parser = parse_musicxml.Parser('Cantabile-Flute.musicxml')
-    generate(100)
+    parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
+    for parser in parsers:
+        sequence = generate(100, parser)
+        track    = 0
+        channel  = 0
+        time     = 0.0    # In beats
+        duration = 1.0   # In beats
+        tempo    = parser.tempo if parser.tempo is not None else 80  # In BPM
+        volume   = 100  # 0-127, as per the MIDI standard
+
+        output_midi = MIDIFile(1)  # One track, defaults to format 1 (tempo track is created automatically)
+        output_midi.addTempo(track, time, tempo)
+        output_midi.addProgramChange(track, channel, time, midi_numbers.instrument_to_program(parser.instrument))
+
+        total_prev_duration = 0.0
+        for sound_obj in sequence:
+            duration = float(parser.rhythm_to_float(sound_obj[1]))
+            sound_info = sound_obj[0]
+            if type(sound_info) is str:
+                pitch = get_pitch(sound_info)
+                if pitch is not None: # i.e. if this is not a rest
+                    output_midi.addNote(track, channel, pitch, time + total_prev_duration, duration, volume)
+            else: #  type(sound_info) is tuple
+                for note in sound_info:
+                    pitch = get_pitch(note)
+                    output_midi.addNote(track, channel, pitch, time + total_prev_duration, duration, volume)
+            total_prev_duration += duration
+        with open(parser.filename + ".mid", "wb") as output_file:
+            output_midi.writeFile(output_file)
