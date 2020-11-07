@@ -118,11 +118,11 @@ class Parser:
             self.handle_insertion(('R', "quarter"), first_sound_object)
 
         self.build_matrices()
-        self.print_dict(self.initial_transition_dict)
-        print()
-        self.print_dict(self.transition_probability_dict)
-        print()
-        print(self.sound_objects)
+        # self.print_dict(self.initial_transition_dict)
+        # print()
+        # self.print_dict(self.transition_probability_dict)
+        # print()
+        # print(self.sound_objects)
 
     def set_key_sig_from_measure(self, measure_object):
         key_sig_value = measure_object.find('attributes')

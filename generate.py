@@ -49,32 +49,28 @@ def check_null_index(index, error_message):
         print(error_message)
         sys.exit(1)
 
-def convert_flat_accidentals(note):
-    switcher = {
-        "Cb": "B",
-        "Db": "C#",
-        "Eb": "D#",
-        "Fb": "E",
-        "Gb": "F#",
-        "Ab": "G#",
-        "Bb": "A#"
-    }
-    return switcher.get(note, note)
-
 def get_note_offset_midi_val(note):
     switcher = {
         "C": 0,
         "C#": 1,
+        "Db": 1,
         "D": 2,
         "D#": 3,
+        "Eb": 3,
         "E": 4,
+        "Fb": 4,
+        "E#": 5,
         "F": 5,
         "F#": 6,
+        "Gb": 6,
         "G": 7,
         "G#": 8,
+        "Ab": 8,
         "A": 9,
         "A#": 10,
-        "B": 11
+        "Bb": 10,
+        "B": 11,
+        "Cb": 11
     }
     return switcher.get(note, 0)
 
@@ -83,15 +79,14 @@ def get_pitch(note):
     if len(octave_info) > 0:
         octave = int(octave_info[0])
         note = ''.join([i for i in note if not i.isdigit()])
-        note = convert_flat_accidentals(note)
         base_octave_val = 12*octave + 24
         note_val = base_octave_val + get_note_offset_midi_val(note)
         return note_val
     return None # this is a rest
 
 if __name__ == "__main__":
-    # parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
-    parsers  = [parse_musicxml.Parser('Cantabile-Piano.musicxml')]
+    parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
+    # parsers  = [parse_musicxml.Parser('Cantabile-Piano.musicxml')]
     for parser in parsers:
         sequence = generate(100, parser)
         track    = 0
@@ -105,18 +100,20 @@ if __name__ == "__main__":
         output_midi.addTempo(track, time, tempo)
         output_midi.addProgramChange(track, channel, time, midi_numbers.instrument_to_program(parser.instrument))
 
-        total_prev_duration = 0.0
+        time = 0.0
         for sound_obj in sequence:
             duration = float(parser.rhythm_to_float(sound_obj[1]))
             sound_info = sound_obj[0]
             if type(sound_info) is str:
                 pitch = get_pitch(sound_info)
                 if pitch is not None: # i.e. if this is not a rest
-                    output_midi.addNote(track, channel, pitch, time + total_prev_duration, duration, volume)
+                    output_midi.addNote(track, channel, pitch, time, duration, volume)
             else: #  type(sound_info) is tuple
                 for note in sound_info:
                     pitch = get_pitch(note)
-                    output_midi.addNote(track, channel, pitch, time + total_prev_duration, duration, volume)
-            total_prev_duration += duration
+                    output_midi.addNote(track, channel, pitch, time, duration, volume)
+                    print(note, pitch)
+                print()
+            time += duration
         with open(parser.filename + ".mid", "wb") as output_file:
             output_midi.writeFile(output_file)
