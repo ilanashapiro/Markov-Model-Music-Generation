@@ -21,16 +21,17 @@ def find_nearest_above(my_array, target):
 def generate(seq_len, parser):
     sequence = [None] * seq_len
 
-    # comment in for random start note
-    # note_prob = random.uniform(0, 1)
-    # rhythm_prob = random.uniform(0, 1)
-    # note_index = find_nearest_above(parser.normalized_initial_transition_matrix, note_prob)
-    # check_null_index(note_index, "ERROR getting note index in initial transition matrix")
+    # comment in for same start note as training data
+    note_prob = random.uniform(0, 1)
+    rhythm_prob = random.uniform(0, 1)
+    note_index = find_nearest_above(parser.normalized_initial_transition_matrix, note_prob)
+    check_null_index(note_index, "ERROR getting note index in initial transition matrix")
+    curr_index = 0
 
     # comment in for seed
-    sequence[0] = parser.sound_objects[0]
-    note_index = 0
-    curr_index = 1
+    # sequence[0] = parser.states[0]
+    # note_index = 0
+    # curr_index = 1
 
     while (curr_index < seq_len):
         note_prob = random.uniform(0, 1)
@@ -39,7 +40,7 @@ def generate(seq_len, parser):
         note_index = find_nearest_above(parser.normalized_transition_probability_matrix[note_index], note_prob)
         check_null_index(note_index, "ERROR getting note index in probability transition matrix")
 
-        sequence[curr_index] = parser.sound_objects[note_index]
+        sequence[curr_index] = parser.states[note_index]
         curr_index += 1
 
     return sequence
@@ -85,8 +86,8 @@ def get_pitch(note):
     return None # this is a rest
 
 if __name__ == "__main__":
-    parsers = [parse_musicxml.Parser('sakura_solo.musicxml'), parse_musicxml.Parser('Cantabile-Piano.musicxml'), parse_musicxml.Parser('Cantabile-Flute.musicxml')]
-    # parsers  = [parse_musicxml.Parser('Cantabile-Piano.musicxml')]
+    parsers = [parse_musicxml.Parser('Cantabile_flute_excerpt.musicxml'), parse_musicxml.Parser('Cantabile_piano_excerpt.musicxml')]
+
     for parser in parsers:
         sequence = generate(100, parser)
         track    = 0
@@ -112,8 +113,6 @@ if __name__ == "__main__":
                 for note in sound_info:
                     pitch = get_pitch(note)
                     output_midi.addNote(track, channel, pitch, time, duration, volume)
-                    print(note, pitch)
-                print()
             time += duration
         with open(parser.filename + ".mid", "wb") as output_file:
             output_midi.writeFile(output_file)

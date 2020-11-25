@@ -6,8 +6,6 @@ class Parser:
     def __init__(self, filename):
         self.filename = filename
         self.root = ET.parse(filename).getroot()
-        self.output_distribution_dict = collections.OrderedDict()
-        self.normalized_output_distribution_matrix = None
 
         self.initial_transition_dict = collections.OrderedDict()
         self.normalized_initial_transition_matrix = None
@@ -15,7 +13,7 @@ class Parser:
         self.transition_probability_dict = collections.OrderedDict()
         self.normalized_transition_probability_matrix = None
 
-        self.sound_objects = []
+        self.states = []
 
         self.smallest_note_value = None
         self.tempo = None
@@ -34,9 +32,10 @@ class Parser:
         prev_duration = None
         first_sound_object = None
 
-        self.tempo = self.root.find('part').find('measure').find('direction')
-        if self.tempo is not None:
-            self.tempo = int(self.tempo.find('sound').attrib['tempo'])
+        direction_blocks = self.root.find('part').find('measure').findall('direction')
+        for direction_block in direction_blocks:
+            if self.tempo is None and direction_block.find('sound') is not None and 'tempo' in direction_block.find('sound').attrib:
+                self.tempo = int(direction_block.find('sound').attrib['tempo'])
         self.instrument = self.root.find('part-list').find('score-part').find('part-name').text
         if self.instrument == 'Piano':
             self.instrument = 'Acoustic Grand Piano'
@@ -49,11 +48,8 @@ class Parser:
 
                 for k, note_info in enumerate(measure.findall('note')):
                     duration = note_info.find('type').text
-                    duration_value = note_info.find('duration').text # unsure if this is chunk is ever needed later.....
-                    if int(duration_value) == 1 and not self.smallest_note_value and note_info.find('type') is not None:
-                        self.smallest_note_value = self.rhythm_to_float(note_info.find('type').text)
-
                     note = None
+
                     if note_info.find('pitch') is not None:
                         value = note_info.find('pitch').find('step').text if note_info.find('pitch').find('step') is not None else ''
                         octave = note_info.find('pitch').find('octave').text if note_info.find('pitch').find('octave') is not None else ''
@@ -76,7 +72,8 @@ class Parser:
                             accidental = self.key_sig_dict[value]
 
                         note = value + accidental + octave
-                    elif note_info.find('chord') is None: # means that note_info.find('rest') is not None ----> so we are in a rest
+                    elif note_info.find('chord') is None:
+                        # means that note_info.find('rest') is not None ----> so we are in a rest
                         note = 'R'
 
                     if note is not None:
@@ -100,13 +97,15 @@ class Parser:
                             self.handle_insertion(prev_sound_object, sound_object_to_insert)
                             if first_sound_object is None and prev_sound_object is not None and prev_sound_object[0] is not None:
                                 first_sound_object = prev_sound_object
-                            if is_last_iteration: #note we're NOT in a chord (i.e. last sound object is NOT a chord)
+                            if is_last_iteration:
+                                # note that we're NOT in a chord (i.e. last sound object is NOT a chord)
                                 self.handle_insertion(sound_object_to_insert, (note, duration))
 
                     prev_note = note
                     prev_duration = duration
 
-        if in_chord: # means the last sound object was a chord -- handle this case
+        if in_chord:
+            # handle the case where the last sound object was a chord
             final_chord = (tuple(sorted(chord)), prev_duration)
             self.handle_insertion(sound_object_to_insert, (final_chord, prev_duration))
         else:
@@ -118,11 +117,6 @@ class Parser:
             self.handle_insertion(('R', "quarter"), first_sound_object)
 
         self.build_matrices()
-        # self.print_dict(self.initial_transition_dict)
-        # print()
-        # self.print_dict(self.transition_probability_dict)
-        # print()
-        # print(self.sound_objects)
 
     def set_key_sig_from_measure(self, measure_object):
         key_sig_value = measure_object.find('attributes')
@@ -142,7 +136,6 @@ class Parser:
                     for i in range(key_sig_value, len(self.order_of_sharps)):
                         self.key_sig_dict[self.order_of_sharps[i]] = '#'
 
-
     def build_matrices(self):
         self.build_normalized_transition_probability_matrix()
         self.build_normalized_initial_transition_matrix()
@@ -156,11 +149,11 @@ class Parser:
 
     def build_normalized_transition_probability_matrix(self):
         # initialize matrix to known size
-        list_dimension = len(self.sound_objects)
+        list_dimension = len(self.states)
         self.normalized_transition_probability_matrix = np.zeros((list_dimension,list_dimension), dtype=float)
 
-        for i, sound_object in enumerate(self.sound_objects):
-            for j, transition_sound_object in enumerate(self.sound_objects):
+        for i, sound_object in enumerate(self.states):
+            for j, transition_sound_object in enumerate(self.states):
                 if transition_sound_object in self.transition_probability_dict[sound_object]:
                     self.normalized_transition_probability_matrix[i][j] = self.transition_probability_dict[sound_object][transition_sound_object]
         self.normalized_transition_probability_matrix = self.normalized_transition_probability_matrix/self.normalized_transition_probability_matrix.sum(axis=1,keepdims=True)
@@ -170,8 +163,8 @@ class Parser:
         if sound_object_to_insert is not None and sound_object_to_insert[0] is not None:
             if prev_sound_object is not None and prev_sound_object[0] is not None:
                 self.insert(self.transition_probability_dict, prev_sound_object, sound_object_to_insert)
-            if sound_object_to_insert not in self.sound_objects:
-                self.sound_objects.append(sound_object_to_insert)
+            if sound_object_to_insert not in self.states:
+                self.states.append(sound_object_to_insert)
 
             if sound_object_to_insert in self.initial_transition_dict:
                 self.initial_transition_dict[sound_object_to_insert] = self.initial_transition_dict[sound_object_to_insert] + 1
